@@ -44,16 +44,18 @@ const fsx = {
   },
 
   // Totals over the PDFs in a folder, a few levels down: how many there are, the newest change,
-  // the last read and the number of reads. A folder has no data of its own.
+  // the time of the last read, the number of reads, and the PDF read last.
+  // A folder has no data of its own.
   async folderStats(segments, depth = 2) {
     const key = depth + ':' + pathKey(segments);
     if (this.stats.has(key)) return this.stats.get(key);
     const listing = await this.list(segments);
-    const empty = { count: 0, date: 0, read: 0, reads: 0 };
+    const empty = { count: 0, date: 0, read: 0, reads: 0, last: null };
     const [pdfs, subs] = await Promise.all([
       Promise.all(listing.pdfs.map((p) => p.handle.getFile().then((file) => {
         const record = pdfData.get(pdfId(file), {});
-        return { count: 1, date: file.lastModified, read: record.at ?? 0, reads: record.reads ?? 0 };
+        const last = record.at ? { path: [...segments, p.name], record } : null;
+        return { count: 1, date: file.lastModified, read: record.at ?? 0, reads: record.reads ?? 0, last };
       }, () => empty))),
       depth > 0 ? Promise.all(listing.folders.map((f) => this.folderStats([...segments, f.name], depth - 1).catch(() => empty))) : [],
     ]);
@@ -63,6 +65,7 @@ const fsx = {
       date: Math.max(0, ...all.map((s) => s.date)),
       read: Math.max(0, ...all.map((s) => s.read)),
       reads: all.reduce((sum, s) => sum + s.reads, 0),
+      last: all.reduce((best, s) => (s.read > (best?.record.at ?? 0) ? s.last : best), null),
     };
     this.stats.set(key, stats);
     return stats;

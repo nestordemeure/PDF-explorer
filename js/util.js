@@ -2,7 +2,7 @@
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 // "vol 2", "vol_2" and "vol2" sort the same.
-const sortKey = (name) => name.replace(/[\s_-]+(?=\d)/g, '');
+const sortKey = (name) => name.replace(/(\D)[\s_-]*(?=\d)/g, '$1 ');
 const naturalCompare = (a, b) => collator.compare(sortKey(a), sortKey(b)) || collator.compare(a, b);
 const hasNumber = (name) => /\d/.test(name);
 // The title of a series: the text before the first number, without "vol", "#" and the like.

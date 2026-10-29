@@ -13,6 +13,7 @@ class FolderView {
     this.key = pathKey(segments);
     this.alive = true;
     this.events = new AbortController();
+    this.bannerHeight = 0;
   }
 
   async mount() {
@@ -66,17 +67,6 @@ class FolderView {
     }, { root: mainEl, rootMargin: '600px 0px' });
 
     const content = [];
-    const last = store.get('last:' + this.key);
-    const lastEntry = listing.pdfs.find((p) => p.name === last);
-    if (lastEntry) {
-      const pos = await lastEntry.handle.getFile().then((file) => pdfData.get(pdfId(file), {}), () => ({}));
-      if (!this.alive) return;
-      const where = pos.page !== undefined && !pos.done ? ` · page ${pos.page + 1} of ${pos.pages}` : '';
-      const resume = link('', makeHash([...this.segments, last], false), 'resume');
-      resume.append(el('span', 'resume-label', 'Continue reading'), el('span', 'resume-name', displayName(last) + where));
-      content.push(resume);
-    }
-
     if (!listing.folders.length && !listing.pdfs.length) {
       content.push(el('p', 'empty', 'No folders or PDFs here.'));
     } else {
@@ -88,10 +78,14 @@ class FolderView {
     }
 
     mainEl.replaceChildren(...content);
+    // The scroll position counts from the top of the content, not counting the banner.
     mainEl.scrollTop = store.get('scroll:' + this.key, 0);
     mainEl.focus({ preventScroll: true });
+    this.showResume();
 
-    const saveScroll = throttle(() => store.set('scroll:' + this.key, mainEl.scrollTop), 250);
+    const saveScroll = throttle(() => {
+      store.set('scroll:' + this.key, mainEl.scrollTop - this.bannerHeight);
+    }, 250);
     this.saveScroll = saveScroll;
     mainEl.addEventListener('scroll', saveScroll, { signal: this.events.signal });
     window.addEventListener('keydown', (e) => {
@@ -99,6 +93,23 @@ class FolderView {
         location.hash = makeHash(target, false);
       }
     }, { signal: this.events.signal });
+  }
+
+  // Links to the PDF read last anywhere in this folder. The search can take a moment,
+  // so the banner comes after the grid, and the view does not move.
+  async showResume() {
+    const { last } = await fsx.folderStats(this.segments, RESUME_DEPTH).catch(() => ({}));
+    if (!last || !this.alive) return;
+    const { path, record } = last;
+    const parts = [displayName(path[path.length - 1])];
+    if (record.page !== undefined && !record.done) parts.push(`page ${record.page + 1} of ${record.pages}`);
+    if (path.length - this.segments.length > 1) parts.push('in ' + path.slice(this.segments.length, -1).join('/'));
+    const resume = link('', makeHash(path, false), 'resume');
+    resume.append(el('span', 'resume-label', 'Continue reading'), el('span', 'resume-name', parts.join(' · ')));
+    const height = mainEl.scrollHeight;
+    mainEl.prepend(resume);
+    this.bannerHeight = mainEl.scrollHeight - height;
+    if (mainEl.scrollTop > 0) mainEl.scrollTop += this.bannerHeight;
   }
 
   // Finds the sort key of an item, and the text that its card shows for it.
@@ -187,17 +198,19 @@ class FolderView {
     thumb.append(el('span', 'icon', '📄'));
     card.append(thumb, el('div', 'name', displayName(pdf.name)));
     if (info) card.append(el('div', 'meta', info));
+    // The bar keeps its space while empty, so that cards do not grow when it fills.
+    const bar = el('div', 'progress');
+    bar.style.visibility = 'hidden';
+    bar.append(el('i'));
+    card.append(bar);
 
     card.load = async () => {
       try {
         const file = await pdf.handle.getFile();
         const progress = readProgress(pdfData.get(pdfId(file), {}));
         if (progress !== null) {
-          const bar = el('div', 'progress');
-          const fill = el('i');
-          fill.style.width = (progress * 100).toFixed(1) + '%';
-          bar.append(fill);
-          card.append(bar);
+          bar.firstChild.style.width = (progress * 100).toFixed(1) + '%';
+          bar.style.visibility = '';
         }
         const url = await thumbs.get(segments, pdf.handle);
         if (this.alive) showCover(thumb, url);
@@ -219,6 +232,9 @@ class FolderView {
 }
 
 // Each mode sorts on its keys in turn, largest first.
+// How many levels of subfolders "Continue reading" looks into.
+const RESUME_DEPTH = 3;
+
 const SORT_MODES = [
   { mode: 'name', keys: [], label: 'A–Z', title: 'Sort by name' },
   { mode: 'date', keys: ['date'], label: 'Modified', title: 'Sort by last change, newest first' },
