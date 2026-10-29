@@ -36,8 +36,8 @@ const fsx = {
       else if (/\.pdf$/i.test(name)) pdfs.push({ name, handle });
     }
     folders.sort((a, b) => naturalCompare(a.name, b.name));
-    const compare = folders.length ? naturalCompare : issueCompare;
-    pdfs.sort((a, b) => compare(a.name, b.name));
+    if (folders.length) pdfs.sort((a, b) => naturalCompare(displayName(a.name), displayName(b.name)));
+    else sortIssues(pdfs);
     const listing = { folders, pdfs };
     this.listings.set(key, listing);
     return listing;

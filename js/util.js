@@ -4,9 +4,23 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 // "vol 2", "vol_2" and "vol2" sort the same.
 const sortKey = (name) => name.replace(/[\s_-]+(?=\d)/g, '');
 const naturalCompare = (a, b) => collator.compare(sortKey(a), sortKey(b)) || collator.compare(a, b);
-// In a folder of PDFs only, names with a number come first, so that numbered issues come before extras.
 const hasNumber = (name) => /\d/.test(name);
-const issueCompare = (a, b) => hasNumber(b) - hasNumber(a) || naturalCompare(a, b);
+// The title of a series: the text before the first number, without "vol", "#" and the like.
+const SERIES_END = /(?:[^\p{L}\p{N}]+(?:vol(?:ume)?|tome|issue|no|part|chapter|ch|book))?[^\p{L}\p{N}]*$/iu;
+const seriesTitle = (name) => name.split(/\d/)[0].replace(SERIES_END, '').toLowerCase();
+
+// Orders the PDFs of a folder of PDFs alone. Numbered names come first, so that issues
+// come before extras. A name without a number that is the title of a numbered series
+// stays with that series.
+function sortIssues(pdfs) {
+  const series = new Set(pdfs.filter((p) => hasNumber(p.name)).map((p) => seriesTitle(displayName(p.name))));
+  const group = (name) => (hasNumber(name) || series.has(seriesTitle(name)) ? 0 : 1);
+  return pdfs.sort((a, b) => {
+    const nameA = displayName(a.name);
+    const nameB = displayName(b.name);
+    return group(nameA) - group(nameB) || naturalCompare(nameA, nameB);
+  });
+}
 
 const crumbsEl = document.getElementById('crumbs');
 const toolsEl = document.getElementById('tools');

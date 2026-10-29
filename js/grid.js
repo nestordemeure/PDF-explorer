@@ -28,8 +28,8 @@ class FolderView {
       ...listing.folders.map((entry) => ({ entry, isFolder: true, label: entry.name })),
       ...listing.pdfs.map((entry) => ({ entry, isFolder: false, label: displayName(entry.name) })),
     ];
-    const compare = listing.folders.length ? naturalCompare : issueCompare;
-    items.sort((a, b) => compare(a.label, b.label));
+    // A folder of PDFs alone keeps the order of its listing, which is the reading order.
+    if (listing.folders.length) items.sort((a, b) => naturalCompare(a.label, b.label));
     if (sort !== 'name') {
       mainEl.replaceChildren(el('p', 'empty', 'Sorting…'));
       await Promise.all(items.map((item) => this.measure(item, sort)));
