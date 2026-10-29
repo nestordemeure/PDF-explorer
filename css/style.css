@@ -26,6 +26,7 @@ body {
 a { color: var(--accent); }
 
 header {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
@@ -51,6 +52,9 @@ header {
 
 .tools { flex: none; display: flex; align-items: center; gap: 6px; }
 .tools .divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.progress-bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; }
+.progress-bar > i { display: block; height: 100%; background: var(--accent); }
+.pdf-label { color: var(--muted); font-variant-numeric: tabular-nums; }
 .page-label { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
 
 button {

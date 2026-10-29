@@ -49,6 +49,7 @@ class ReaderView {
     // Only a folder of PDFs alone scrolls from one PDF into the next.
     const single = listing.folders.length > 0;
     this.pdfs = single ? [listing.pdfs[index]] : listing.pdfs;
+    this.single = single;
     if (single) index = 0;
     this.zooms = {};
     for (const shape of Object.keys(DEFAULT_ZOOM)) {
@@ -97,10 +98,15 @@ class ReaderView {
 
   buildTools() {
     this.pageLabel = el('span', 'page-label');
+    this.pageLabel.title = 'Page in this PDF';
+    this.pdfLabel = el('span', 'pdf-label');
+    this.pdfLabel.title = 'PDF in this folder';
+    this.pdfLabel.hidden = this.single;
     this.zoomLabel = button('', 'Back to the default zoom (0)', () => this.setZoom(DEFAULT_ZOOM[this.shape]));
     this.zoomLabel.className = 'zoom-label';
     this.updateZoomLabel();
     toolsEl.replaceChildren(
+      this.pdfLabel,
       this.pageLabel,
       el('span', 'divider'),
       button('−', 'Zoom out (−)', () => this.setZoom(this.zoom / 1.1)),
@@ -282,7 +288,7 @@ class ReaderView {
       this.anchor = anchor;
       this.visit(section).pages.add(anchor.page.pageIndex);
       this.checkRead(section);
-      this.pageLabel.textContent = `${anchor.page.pageIndex + 1} / ${section.pages.length}`;
+      this.showProgress(anchor);
       this.savePosition();
     }
     const viewport = mainEl.clientHeight;
@@ -455,7 +461,18 @@ class ReaderView {
     }
   }
 
+  // Page and PDF numbers, and a bar that fills over the folder, or over the PDF when it is alone.
+  showProgress(anchor) {
+    const section = anchor.page.section;
+    this.pageLabel.textContent = `p. ${anchor.page.pageIndex + 1}/${section.pages.length}`;
+    this.pdfLabel.textContent = `PDF ${section.index + 1}/${this.pdfs.length}`;
+    const inPdf = (anchor.page.pageIndex + anchor.frac) / section.pages.length;
+    progressEl.firstChild.style.width = ((section.index + inPdf) / this.pdfs.length * 100).toFixed(2) + '%';
+    progressEl.hidden = false;
+  }
+
   destroy() {
+    progressEl.hidden = true;
     clearInterval(this.readTimer);
     this.savePosition?.flush();
     this.alive = false;

@@ -25,6 +25,7 @@ function sortIssues(pdfs) {
 const crumbsEl = document.getElementById('crumbs');
 const toolsEl = document.getElementById('tools');
 const mainEl = document.getElementById('main');
+const progressEl = document.getElementById('progress');
 
 // Routes: "#/a/b/" is a folder, "#/a/b/c.pdf" is a PDF.
 function parseHash(hash) {
