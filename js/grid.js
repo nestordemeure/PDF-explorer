@@ -28,7 +28,8 @@ class FolderView {
       ...listing.folders.map((entry) => ({ entry, isFolder: true, label: entry.name })),
       ...listing.pdfs.map((entry) => ({ entry, isFolder: false, label: displayName(entry.name) })),
     ];
-    items.sort((a, b) => naturalCompare(a.label, b.label));
+    const compare = listing.folders.length ? naturalCompare : issueCompare;
+    items.sort((a, b) => compare(a.label, b.label));
     if (sort !== 'name') {
       mainEl.replaceChildren(el('p', 'empty', 'Sorting…'));
       await Promise.all(items.map((item) => this.measure(item, sort)));
@@ -45,7 +46,8 @@ class FolderView {
     setTitle(this.segments.length ? this.segments[this.segments.length - 1] : fsx.root.name);
     renderCrumbs(this.segments, true);
     const tools = [];
-    const target = readTarget(this.segments, listing);
+    // Only a folder of PDFs alone can be read in one scroll.
+    const target = listing.folders.length ? null : readTarget(this.segments, listing);
     if (target) {
       tools.push(button('📖 Read', 'Read all PDFs of this folder in one scroll (R)', () => {
         location.hash = makeHash(target, false);

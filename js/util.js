@@ -1,7 +1,12 @@
 'use strict';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-const naturalCompare = (a, b) => collator.compare(a, b);
+// "vol 2", "vol_2" and "vol2" sort the same.
+const sortKey = (name) => name.replace(/[\s_-]+(?=\d)/g, '');
+const naturalCompare = (a, b) => collator.compare(sortKey(a), sortKey(b)) || collator.compare(a, b);
+// In a folder of PDFs only, names with a number come first, so that numbered issues come before extras.
+const hasNumber = (name) => /\d/.test(name);
+const issueCompare = (a, b) => hasNumber(b) - hasNumber(a) || naturalCompare(a, b);
 
 const crumbsEl = document.getElementById('crumbs');
 const toolsEl = document.getElementById('tools');
@@ -49,7 +54,8 @@ function link(label, href, className) {
 
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 // Runs at most `max` of the given async functions at the same time.

@@ -35,9 +35,9 @@ const fsx = {
       if (handle.kind === 'directory') folders.push({ name, handle });
       else if (/\.pdf$/i.test(name)) pdfs.push({ name, handle });
     }
-    const byName = (a, b) => naturalCompare(a.name, b.name);
-    folders.sort(byName);
-    pdfs.sort(byName);
+    folders.sort((a, b) => naturalCompare(a.name, b.name));
+    const compare = folders.length ? naturalCompare : issueCompare;
+    pdfs.sort((a, b) => compare(a.name, b.name));
     const listing = { folders, pdfs };
     this.listings.set(key, listing);
     return listing;

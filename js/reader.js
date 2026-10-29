@@ -2,6 +2,7 @@
 
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 5;
+const DEFAULT_ZOOM = { portrait: 0.5, landscape: 0.8 };
 const MAX_CANVAS_PIXELS = 16e6;
 // The current page is the one under this line, as a fraction of the view height.
 const READING_LINE = 0.3;
@@ -24,7 +25,7 @@ const pageSizeCache = new Map();
 
 // Infinite scroll over all the PDFs of one folder.
 // A zoom of 1 makes the median page of each PDF as wide as the window.
-// The default zoom is 0.8 for landscape pages and 0.5 for portrait pages.
+// Each folder keeps one zoom for portrait PDFs and one for landscape PDFs.
 // Wider pages, such as double-page covers, shrink to that width.
 class ReaderView {
   constructor(segments) {
@@ -43,18 +44,22 @@ class ReaderView {
 
   async mount() {
     const listing = await fsx.list(this.folder);
-    const index = listing.pdfs.findIndex((p) => displayName(p.name) === this.fileName || p.name === this.fileName);
+    let index = listing.pdfs.findIndex((p) => displayName(p.name) === this.fileName || p.name === this.fileName);
     if (index < 0) throw Object.assign(new Error(`${this.fileName} is not in this folder.`), { name: 'MissingPdfError' });
-    this.pdfs = listing.pdfs;
-    const savedZoom = store.get('zoom:' + this.folderKey);
-    this.defaultZoom = 0.8;
-    this.zoom = savedZoom ?? this.defaultZoom;
+    // Only a folder of PDFs alone scrolls from one PDF into the next.
+    const single = listing.folders.length > 0;
+    this.pdfs = single ? [listing.pdfs[index]] : listing.pdfs;
+    if (single) index = 0;
+    this.zooms = {};
+    for (const shape of Object.keys(DEFAULT_ZOOM)) {
+      this.zooms[shape] = store.get(`zoom:${this.folderKey}|${shape}`, DEFAULT_ZOOM[shape]);
+    }
 
     this.buildTools();
     this.container = el('div', 'reader');
-    this.startMarker = el('div', 'edge', 'Start of folder');
+    this.startMarker = el('div', 'edge', single ? 'Start of PDF' : 'Start of folder');
     this.endMarker = el('div', 'edge');
-    this.endMarker.append('End of folder · ', link('Back to covers', makeHash(this.folder, true)));
+    this.endMarker.append(single ? 'End of PDF · ' : 'End of folder · ', link('Back to covers', makeHash(this.folder, true)));
     this.startMarker.hidden = this.endMarker.hidden = true;
     this.container.append(this.startMarker, this.endMarker);
     mainEl.replaceChildren(this.container);
@@ -64,9 +69,6 @@ class ReaderView {
 
     const section = await this.loadSection(index);
     if (!this.alive) return;
-    if (section.portrait) this.defaultZoom = 0.5;
-    this.zoom = savedZoom ?? this.defaultZoom;
-    this.updateZoomLabel();
     this.insertSection(section, 1);
     this.restorePosition(section);
     this.setCurrent(section);
@@ -95,7 +97,7 @@ class ReaderView {
 
   buildTools() {
     this.pageLabel = el('span', 'page-label');
-    this.zoomLabel = button('', 'Back to the default zoom (0)', () => this.setZoom(this.defaultZoom));
+    this.zoomLabel = button('', 'Back to the default zoom (0)', () => this.setZoom(DEFAULT_ZOOM[this.shape]));
     this.zoomLabel.className = 'zoom-label';
     this.updateZoomLabel();
     toolsEl.replaceChildren(
@@ -107,6 +109,15 @@ class ReaderView {
       el('span', 'divider'),
       button('▦ Covers', 'Show the covers of this folder (Esc)', () => { location.hash = makeHash(this.folder, true); }),
     );
+  }
+
+  // The shape of the PDF in view. The zoom controls act on the zoom of that shape.
+  get shape() {
+    return this.current?.shape ?? 'landscape';
+  }
+
+  get zoom() {
+    return this.zooms[this.shape];
   }
 
   updateZoomLabel() {
@@ -144,8 +155,10 @@ class ReaderView {
         pdfData.update(section.id, { pages: sizes.length });
       }
       section.sizes = sizes;
-      section.medianWidth = median(sizes.map((s) => s.w));
-      section.portrait = median(sizes.map((s) => s.h / s.w)) > 1;
+      // Covers often have an odd size, so only a one-page PDF uses its first page here.
+      const body = sizes.length > 1 ? sizes.slice(1) : sizes;
+      section.medianWidth = median(body.map((s) => s.w));
+      section.shape = median(body.map((s) => s.h / s.w)) > 1 ? 'portrait' : 'landscape';
       section.pages = sizes.map((_, i) => {
         const page = el('div', 'page');
         page.dataset.n = i + 1;
@@ -183,7 +196,7 @@ class ReaderView {
 
   layoutSection(section) {
     if (!section.pages.length) return;
-    const maxWidth = this.zoom * mainEl.clientWidth;
+    const maxWidth = this.zooms[section.shape] * mainEl.clientWidth;
     const scale = maxWidth / section.medianWidth;
     section.pages.forEach((page, i) => {
       const size = section.sizes[i];
@@ -291,6 +304,7 @@ class ReaderView {
     history.replaceState(null, '', makeHash(section.path, false));
     setTitle(displayName(section.name));
     renderCrumbs(section.path, false);
+    this.updateZoomLabel();
     store.set('last:' + this.folderKey, section.name);
     for (const s of this.sections) {
       if (Math.abs(s.index - section.index) > 1) this.releaseDoc(s);
@@ -313,8 +327,8 @@ class ReaderView {
   setZoom(zoom) {
     zoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX);
     if (Math.abs(zoom - this.zoom) < 1e-4) return;
-    this.zoom = zoom;
-    store.set('zoom:' + this.folderKey, zoom);
+    this.zooms[this.shape] = zoom;
+    store.set(`zoom:${this.folderKey}|${this.shape}`, zoom);
     this.updateZoomLabel();
     this.relayout();
   }
@@ -345,7 +359,7 @@ class ReaderView {
     if (e.altKey || e.metaKey) return;
     if (e.key === '+' || e.key === '=') this.setZoom(this.zoom * 1.1);
     else if (e.key === '-' || e.key === '_') this.setZoom(this.zoom / 1.1);
-    else if (e.key === '0') this.setZoom(this.defaultZoom);
+    else if (e.key === '0') this.setZoom(DEFAULT_ZOOM[this.shape]);
     else if (e.key === 'Escape' && !e.ctrlKey) location.hash = makeHash(this.folder, true);
     else return;
     e.preventDefault();
